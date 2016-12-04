@@ -33,7 +33,7 @@ memory-agent.sh 21987 warmLevel=8.0,gcPeriod=4
 
 1. warmTimeout - timeout in seconds after the last seen CPU warm.
 2. warmLevel - level in percents of the process CPU load, which accepted as the CPU warm.
-3. gcPeriod - count of the consecutive GC, after the CPU load is ended.
+3. gcPeriod - period in seconds for the consecutive GC invocation during the memory shrinking.
 4. gcStopCounter - count of the GC after that GC is stop if the committed memory is not 
                    changed after the GC.
                    
