@@ -1,10 +1,14 @@
 package ru.vektory79.memoryagent;
 
+import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.OperatingSystemMXBean;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -15,11 +19,13 @@ import java.util.logging.Logger;
  */
 public class MemoryAgent {
     private static final Logger LOG = Logger.getLogger(MemoryAgent.class.getName());
+    private static final int MAX_WAIT_MSEC = 20 * 1000;
 
     private static int warmTimeout = 10;
     private static double warmLevel = 10.0;
     private static int gcPeriod = 2;
     private static int gcStopCounter = 5;
+    private static List<GarbageCollectorMXBean> enabledBeans = new ArrayList<>();
 
     private MemoryAgent() {
 
@@ -29,13 +35,54 @@ public class MemoryAgent {
     public static void premain(String args) {
         analyseArgs(args);
 
-        Thread monitoringThread = new Thread(MemoryAgent::monitoring);
-        monitoringThread.setDaemon(true);
-        monitoringThread.setName("Memoty Management Agent");
-        monitoringThread.start();
+        for (GarbageCollectorMXBean bean : ManagementFactory.getGarbageCollectorMXBeans()) {
+            long count = bean.getCollectionCount();
+            if (count != -1) {
+                enabledBeans.add(bean);
+            }
+        }
+
+        if (!enabledBeans.isEmpty()) {
+            Thread monitoringThread = new Thread(MemoryAgent::monitoring);
+            monitoringThread.setDaemon(true);
+            monitoringThread.setName("Memoty Management Agent");
+            monitoringThread.start();
+        }
     }
 
-    @SuppressWarnings({"squid:S2189", "squid:S1215", "InfiniteLoopStatement"})
+    @SuppressWarnings({"ForLoopReplaceableByForEach", "squid:S1215"})
+    private static boolean runSystemGC() {
+        long beforeGcCount = 0;
+        for (int i = 0; i < enabledBeans.size(); i++) {
+            beforeGcCount += enabledBeans.get(i).getCollectionCount();
+        }
+
+        // this call is asynchronous, should check whether it completes
+        System.gc();
+
+        long start = System.nanoTime();
+        while (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) < MAX_WAIT_MSEC) {
+            try {
+                TimeUnit.MILLISECONDS.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
+            long afterGcCount = 0;
+            for (int i = 0; i < enabledBeans.size(); i++) {
+                afterGcCount += enabledBeans.get(i).getCollectionCount();
+            }
+
+            if (afterGcCount > beforeGcCount) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+
+    @SuppressWarnings({"squid:S2189", "squid:S1215", "squid:S134", "InfiniteLoopStatement"})
     private static void monitoring() {
         try {
             System.setProperty(MemoryTool.AGENT_LABEL_PROP_NAME, "true");
@@ -62,7 +109,10 @@ public class MemoryAgent {
 
                 if (gcOn && waitCounter == 0) {
                     long oldCommited = memoryBean.getHeapMemoryUsage().getCommitted();
-                    System.gc();
+                    if (!runSystemGC()) {
+                        LOG.warning("System.gc() is too hard or disabled. Exit the memory agent");
+                        return;
+                    }
                     waitCounter = gcPeriod;
 
                     if (oldCommited == memoryBean.getHeapMemoryUsage().getCommitted()) {
