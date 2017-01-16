@@ -18,7 +18,7 @@ import java.util.logging.Logger;
  * Created by vektor on 03.12.16.
  */
 public class MemoryAgent {
-    private static final Logger LOG = Logger.getLogger(MemoryAgent.class.getName());
+    //private static final Logger LOG = Logger.getLogger(MemoryAgent.class.getName());
     private static final int MAX_WAIT_MSEC = 20 * 1000;
 
     private static int warmTimeout = 10;
@@ -110,7 +110,7 @@ public class MemoryAgent {
                 if (gcOn && waitCounter == 0) {
                     long oldCommited = memoryBean.getHeapMemoryUsage().getCommitted();
                     if (!runSystemGC()) {
-                        LOG.warning("System.gc() is too hard or disabled. Exit the memory agent");
+                        System.out.println("System.gc() is too hard or disabled. Exit the memory agent");
                         return;
                     }
                     waitCounter = gcPeriod;
@@ -127,12 +127,14 @@ public class MemoryAgent {
                 }
             }
         } catch (IllegalArgumentException | SecurityException | NoSuchMethodException e) {
-            LOG.log(Level.WARNING, "Error initialize the Memory Agent", e);
+            System.out.println("Error initialize the Memory Agent");
+            e.printStackTrace();
         } catch (InterruptedException e) {
-            LOG.log(Level.INFO, "Interrapting the Memory Agent monitoring thread.");
+            System.out.println("Interrapting the Memory Agent monitoring thread.");
             Thread.currentThread().interrupt();
         } catch (IllegalAccessException | InvocationTargetException e) {
-            LOG.log(Level.WARNING, "Error accessing the CPU JMX metrics. Do exit monitoring.", e);
+            System.out.println("Error accessing the CPU JMX metrics. Do exit monitoring.");
+            e.printStackTrace();
         } finally {
             System.setProperty(MemoryTool.AGENT_LABEL_PROP_NAME, "false");
         }
